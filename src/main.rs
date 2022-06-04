@@ -2,10 +2,12 @@
 
 use bevy::{
     core::FixedTimestep,
-    math::{const_vec2, const_vec3},
+    math::{vec2, const_vec3},
     prelude::*,
     sprite::collide_aabb::{collide, Collision},
 };
+use rand::Rng;
+use rand::distributions::{Distribution, Uniform};
 
 // Defines the amount of time that should elapse between each physics step.
 const TIME_STEP: f32 = 1.0 / 60.0;
@@ -23,7 +25,6 @@ const PADDLE_PADDING: f32 = 10.0;
 const BALL_STARTING_POSITION: Vec3 = const_vec3!([0.0, -50.0, 1.0]);
 const BALL_SIZE: Vec3 = const_vec3!([30.0, 30.0, 0.0]);
 const BALL_SPEED: f32 = 400.0;
-const INITIAL_BALL_DIRECTION: Vec2 = const_vec2!([0.5, -0.5]);
 
 const WALL_THICKNESS: f32 = 10.0;
 // x coordinates
@@ -169,6 +170,13 @@ struct Scoreboard {
 
 fn new_ball(commands: &mut Commands)
 {
+    let mut rng = rand::thread_rng();
+    let uniform = Uniform::from(-0.5..0.5);
+    let ball_direction = vec2(
+        uniform.sample(&mut rng),
+        uniform.sample(&mut rng),
+    );
+
     commands
         .spawn()
         .insert(Ball)
@@ -184,7 +192,7 @@ fn new_ball(commands: &mut Commands)
             },
             ..default()
         })
-        .insert(Velocity(INITIAL_BALL_DIRECTION.normalize() * BALL_SPEED));
+        .insert(Velocity(ball_direction.normalize() * BALL_SPEED));
 }
 
 // Add the game's entities to our world
