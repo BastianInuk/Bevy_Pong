@@ -167,6 +167,26 @@ struct Scoreboard {
     right: usize
 }
 
+fn new_ball(commands: &mut Commands)
+{
+    commands
+        .spawn()
+        .insert(Ball)
+        .insert_bundle(SpriteBundle {
+            transform: Transform {
+                scale: BALL_SIZE,
+                translation: BALL_STARTING_POSITION,
+                ..default()
+            },
+            sprite: Sprite {
+                color: BALL_COLOR,
+                ..default()
+            },
+            ..default()
+        })
+        .insert(Velocity(INITIAL_BALL_DIRECTION.normalize() * BALL_SPEED));
+}
+
 // Add the game's entities to our world
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Cameras
@@ -202,22 +222,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 
     // Ball
-    commands
-        .spawn()
-        .insert(Ball)
-        .insert_bundle(SpriteBundle {
-            transform: Transform {
-                scale: BALL_SIZE,
-                translation: BALL_STARTING_POSITION,
-                ..default()
-            },
-            sprite: Sprite {
-                color: BALL_COLOR,
-                ..default()
-            },
-            ..default()
-        })
-        .insert(Velocity(INITIAL_BALL_DIRECTION.normalize() * BALL_SPEED));
+    new_ball(&mut commands);
 
     // Right Paddle
     let right_paddle = RIGHT_WALL - GAP_BETWEEN_PADDLE_AND_WALL;
@@ -379,17 +384,18 @@ fn update_scoreboard(scoreboard: Res<Scoreboard>, mut query: Query<(&mut Text, &
 }
 
 fn check_for_collisions(
-    //mut scoreboard: ResMut<Scoreboard>,
-    mut ball_query: Query<(&mut Velocity, &Transform), With<Ball>>,
-    collider_query: Query<&Transform, With<Collider>>,
+    mut commands: Commands,
+    mut scoreboard: ResMut<Scoreboard>,
+    mut ball_query: Query<(Entity, &mut Velocity, &Transform), With<Ball>>,
+    collider_query: Query<(&Transform, Option<&Paddle>), With<Collider>>,
     mut collision_events: EventWriter<CollisionEvent>,
 ) {
-    for (mut ball_velocity, ball_transform) in ball_query.iter_mut()
+    for (entity, mut ball_velocity, ball_transform) in ball_query.iter_mut()
     {
         let ball_size = ball_transform.scale.truncate();
 
         // check collision with walls
-        for transform in collider_query.iter() {
+        for (transform, paddle) in collider_query.iter() {
             let collision = collide(
                 ball_transform.translation,
                 ball_size,
@@ -410,8 +416,24 @@ fn check_for_collisions(
                 // only reflect if the ball's velocity is going in the opposite direction of the
                 // collision
                 match collision {
-                    Collision::Left => reflect_x = ball_velocity.x > 0.0,
-                    Collision::Right => reflect_x = ball_velocity.x < 0.0,
+                    Collision::Left => {
+                        if paddle.is_some() {
+                            reflect_x = ball_velocity.x > 0.0;
+                        } else {
+                            commands.entity(entity).despawn();
+                            new_ball(&mut commands);
+                            scoreboard.right += 1;
+                        }
+                    },
+                    Collision::Right => {
+                        if paddle.is_some() {
+                            reflect_x = ball_velocity.x < 0.0;
+                        } else {
+                            commands.entity(entity).despawn();
+                            new_ball(&mut commands);
+                            scoreboard.left += 1;
+                        }
+                    },
                     Collision::Top => reflect_y = ball_velocity.y < 0.0,
                     Collision::Bottom => reflect_y = ball_velocity.y > 0.0,
                     Collision::Inside => { /* do nothing */ }
