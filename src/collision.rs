@@ -3,7 +3,21 @@ use bevy::{
     sprite::collide_aabb::{collide, Collision},
 };
 
-use crate::{scoreboard::Scoreboard, movement::{Velocity, Ball, Paddle, new_ball}, LEFT_WALL, RIGHT_WALL, BOTTOM_WALL, TOP_WALL, WALL_THICKNESS, WALL_COLOR};
+use crate::{
+    scoreboard::Scoreboard, 
+    movement::{
+        Velocity, 
+        Ball,
+        Paddle, 
+        new_ball
+    }, 
+    LEFT_WALL, 
+    RIGHT_WALL, 
+    BOTTOM_WALL, 
+    TOP_WALL,
+    WALL_THICKNESS,
+    WALL_COLOR
+};
 
 pub fn play_collision_sound(
     mut collision_events: EventReader<CollisionEvent>,
@@ -90,14 +104,13 @@ pub fn check_for_collisions(
 #[derive(Component)]
 pub struct Collider;
 
+#[derive(Component)]
+pub struct Side(pub WallLocation);
+
 #[derive(Default)]
 pub struct CollisionEvent;
 
 pub struct CollisionSound(pub Handle<AudioSource>);
-
-
-#[derive(Component)]
-pub struct Side(pub WallLocation);
 
 // This bundle is a collection of the components that define a "wall" in our game
 #[derive(Bundle)]

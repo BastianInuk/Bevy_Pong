@@ -10,7 +10,7 @@ use scoreboard::Scoreboard;
 use collision::{CollisionEvent, CollisionSound, Collider, WallLocation, Side, WallBundle};
 
 // Defines the amount of time that should elapse between each physics step.
-pub const TIME_STEP: f32 = 1.0 / 60.0;
+const TIME_STEP: f32 = 1.0 / 60.0;
 
 // These constants are defined in `Transform` units.
 // Using the default 2D camera they correspond 1:1 with screen pixels.
