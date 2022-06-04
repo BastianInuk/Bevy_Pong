@@ -2,15 +2,15 @@
 
 use bevy::{
     core::FixedTimestep,
-    math::{vec2, const_vec3},
+    math::{const_vec3},
     prelude::*,
-    sprite::collide_aabb::{collide, Collision},
 };
-use rand::Rng;
-use rand::distributions::{Distribution, Uniform};
+use movement::{Paddle, Controls, new_ball};
+use scoreboard::Scoreboard;
+use collision::{CollisionEvent, CollisionSound, Collider, WallLocation, Side, WallBundle};
 
 // Defines the amount of time that should elapse between each physics step.
-const TIME_STEP: f32 = 1.0 / 60.0;
+pub const TIME_STEP: f32 = 1.0 / 60.0;
 
 // These constants are defined in `Transform` units.
 // Using the default 2D camera they correspond 1:1 with screen pixels.
@@ -44,6 +44,10 @@ const WALL_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
 const TEXT_COLOR: Color = Color::rgb(0.5, 0.5, 1.0);
 const SCORE_COLOR: Color = Color::rgb(1.0, 0.5, 0.5);
 
+pub mod collision;
+pub mod scoreboard;
+pub mod movement;
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -54,145 +58,14 @@ fn main() {
         .add_system_set(
             SystemSet::new()
                 .with_run_criteria(FixedTimestep::step(TIME_STEP as f64))
-                .with_system(check_for_collisions)
-                .with_system(move_paddle.before(check_for_collisions))
-                .with_system(apply_velocity.before(check_for_collisions))
-                .with_system(play_collision_sound.after(check_for_collisions)),
+                .with_system(collision::check_for_collisions)
+                .with_system(movement::move_paddle.before(collision::check_for_collisions))
+                .with_system(movement::apply_velocity.before(collision::check_for_collisions))
+                .with_system(collision::play_collision_sound.after(collision::check_for_collisions)),
         )
-        .add_system(update_scoreboard)
+        .add_system(scoreboard::update_scoreboard)
         .add_system(bevy::input::system::exit_on_esc_system)
         .run();
-}
-
-#[derive(Component)]
-struct Paddle;
-
-#[derive(Component)]
-struct Ball;
-
-#[derive(Component, Deref, DerefMut)]
-struct Velocity(Vec2);
-
-#[derive(Component)]
-struct Collider;
-
-#[derive(Default)]
-struct CollisionEvent;
-
-#[derive(Component)]
-struct Controls {
-    up: KeyCode,
-    down: KeyCode,
-}
-
-struct CollisionSound(Handle<AudioSource>);
-
-
-#[derive(Component)]
-struct Side(WallLocation);
-
-// This bundle is a collection of the components that define a "wall" in our game
-#[derive(Bundle)]
-struct WallBundle {
-    // You can nest bundles inside of other bundles like this
-    // Allowing you to compose their functionality
-    #[bundle]
-    sprite_bundle: SpriteBundle,
-    collider: Collider,
-}
-
-/// Which side of the arena is this wall located on?
-enum WallLocation {
-    Left,
-    Right,
-    Bottom,
-    Top,
-}
-
-impl WallLocation {
-    fn position(&self) -> Vec2 {
-        match self {
-            WallLocation::Left => Vec2::new(LEFT_WALL, 0.),
-            WallLocation::Right => Vec2::new(RIGHT_WALL, 0.),
-            WallLocation::Bottom => Vec2::new(0., BOTTOM_WALL),
-            WallLocation::Top => Vec2::new(0., TOP_WALL),
-        }
-    }
-
-    fn size(&self) -> Vec2 {
-        let arena_height = TOP_WALL - BOTTOM_WALL;
-        let arena_width = RIGHT_WALL - LEFT_WALL;
-        // Make sure we haven't messed up our constants
-        assert!(arena_height > 0.0);
-        assert!(arena_width > 0.0);
-
-        match self {
-            WallLocation::Left => Vec2::new(WALL_THICKNESS, arena_height + WALL_THICKNESS),
-            WallLocation::Right => Vec2::new(WALL_THICKNESS, arena_height + WALL_THICKNESS),
-            WallLocation::Bottom => Vec2::new(arena_width + WALL_THICKNESS, WALL_THICKNESS),
-            WallLocation::Top => Vec2::new(arena_width + WALL_THICKNESS, WALL_THICKNESS),
-        }
-    }
-}
-
-impl WallBundle {
-    // This "builder method" allows us to reuse logic across our wall entities,
-    // making our code easier to read and less prone to bugs when we change the logic
-    fn new(location: WallLocation) -> WallBundle {
-        WallBundle {
-            sprite_bundle: SpriteBundle {
-                transform: Transform {
-                    // We need to convert our Vec2 into a Vec3, by giving it a z-coordinate
-                    // This is used to determine the order of our sprites
-                    translation: location.position().extend(0.0),
-                    // The z-scale of 2D objects must always be 1.0,
-                    // or their ordering will be affected in surprising ways.
-                    // See https://github.com/bevyengine/bevy/issues/4149
-                    scale: location.size().extend(1.0),
-                    ..default()
-                },
-                sprite: Sprite {
-                    color: WALL_COLOR,
-                    ..default()
-                },
-                ..default()
-            },
-            collider: Collider,
-        }
-    }
-}
-
-// This resource tracks the game's score
-struct Scoreboard {
-    left: usize,
-    right: usize
-}
-
-fn new_ball(commands: &mut Commands)
-{
-    let mut rng = rand::thread_rng();
-    let uniform = Uniform::from(-0.5..0.5);
-    let ball_direction = vec2(
-        uniform.sample(&mut rng),
-        uniform.sample(&mut rng),
-    );
-
-    commands
-        .spawn()
-        .insert(Ball)
-        .insert_bundle(SpriteBundle {
-            transform: Transform {
-                scale: BALL_SIZE,
-                translation: BALL_STARTING_POSITION,
-                ..default()
-            },
-            sprite: Sprite {
-                color: BALL_COLOR,
-                ..default()
-            },
-            ..default()
-        })
-        .insert(Velocity(ball_direction.normalize() * BALL_SPEED));
 }
 
 // Add the game's entities to our world
@@ -329,146 +202,4 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn_bundle(WallBundle::new(WallLocation::Right));
     commands.spawn_bundle(WallBundle::new(WallLocation::Bottom));
     commands.spawn_bundle(WallBundle::new(WallLocation::Top));
-}
-
-fn direction_mutate(
-    dir: &mut f32,
-    keyboard: &Res<Input<KeyCode>>,
-    key_up: KeyCode,
-    key_down: KeyCode,
-) {
-    if keyboard.pressed(key_up) {
-        *dir += 1.0;
-    }
-
-    if keyboard.pressed(key_down) {
-        *dir -= 1.0;
-    }
-}
-
-fn move_paddle(
-    keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<(&mut Transform, &Controls), With<Paddle>>,
-) {
-    for (mut paddle_transform, controls) in query.iter_mut() 
-    {
-        let mut direction = 0.0;
-
-        direction_mutate(
-            &mut direction,
-            &keyboard_input,
-            controls.up,
-            controls.down,
-        );
-
-        // Calculate the new horizontal paddle position based on player input
-        let new_paddle_position = paddle_transform.translation.y + direction * PADDLE_SPEED * TIME_STEP;
-
-        // Update the paddle position,
-        // making sure it doesn't cause the paddle to leave the arena
-        let bottom_bound = BOTTOM_WALL + WALL_THICKNESS / 2.0 + PADDLE_SIZE.y / 2.0 + PADDLE_PADDING;
-        let top_bound = TOP_WALL - WALL_THICKNESS / 2.0 - PADDLE_SIZE.y / 2.0 - PADDLE_PADDING;
-
-        paddle_transform.translation.y = new_paddle_position.clamp(bottom_bound, top_bound);
-    }
-}
-
-fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>) {
-    for (mut transform, velocity) in query.iter_mut() {
-        transform.translation.x += velocity.x * TIME_STEP;
-        transform.translation.y += velocity.y * TIME_STEP;
-    }
-}
-
-fn update_scoreboard(scoreboard: Res<Scoreboard>, mut query: Query<(&mut Text, &Side)>) {
-    for (mut text, side) in query.iter_mut()
-    {
-        text.sections[1].value = format!("{}", match side.0 {
-            WallLocation::Left => scoreboard.left,
-            WallLocation::Right => scoreboard.right,
-            _ => 0,
-        });
-    }
-}
-
-fn check_for_collisions(
-    mut commands: Commands,
-    mut scoreboard: ResMut<Scoreboard>,
-    mut ball_query: Query<(Entity, &mut Velocity, &Transform), With<Ball>>,
-    collider_query: Query<(&Transform, Option<&Paddle>), With<Collider>>,
-    mut collision_events: EventWriter<CollisionEvent>,
-) {
-    for (entity, mut ball_velocity, ball_transform) in ball_query.iter_mut()
-    {
-        let ball_size = ball_transform.scale.truncate();
-
-        // check collision with walls
-        for (transform, paddle) in collider_query.iter() {
-            let collision = collide(
-                ball_transform.translation,
-                ball_size,
-                transform.translation,
-                transform.scale.truncate(),
-            );
-            if let Some(collision) = collision {
-                // Sends a collision event so that other systems can react to the collision
-                collision_events.send_default();
-
-                // Scoreboard should be increment when point
-                // scoreboard.score += 1;
-
-                // reflect the ball when it collides
-                let mut reflect_x = false;
-                let mut reflect_y = false;
-
-                // only reflect if the ball's velocity is going in the opposite direction of the
-                // collision
-                match collision {
-                    Collision::Left => {
-                        if paddle.is_some() {
-                            reflect_x = ball_velocity.x > 0.0;
-                        } else {
-                            commands.entity(entity).despawn();
-                            new_ball(&mut commands);
-                            scoreboard.right += 1;
-                        }
-                    },
-                    Collision::Right => {
-                        if paddle.is_some() {
-                            reflect_x = ball_velocity.x < 0.0;
-                        } else {
-                            commands.entity(entity).despawn();
-                            new_ball(&mut commands);
-                            scoreboard.left += 1;
-                        }
-                    },
-                    Collision::Top => reflect_y = ball_velocity.y < 0.0,
-                    Collision::Bottom => reflect_y = ball_velocity.y > 0.0,
-                    Collision::Inside => { /* do nothing */ }
-                }
-
-                // reflect velocity on the x-axis if we hit something on the x-axis
-                if reflect_x {
-                    ball_velocity.x = -ball_velocity.x;
-                }
-
-                // reflect velocity on the y-axis if we hit something on the y-axis
-                if reflect_y {
-                    ball_velocity.y = -ball_velocity.y;
-                }
-            }
-        }
-    }
-}
-
-fn play_collision_sound(
-    mut collision_events: EventReader<CollisionEvent>,
-    audio: Res<Audio>,
-    sound: Res<CollisionSound>,
-) {
-    // Play a sound once per frame if a collision occurred. `count` consumes the
-    // events, preventing them from triggering a sound on the next frame.
-    if collision_events.iter().count() > 0 {
-        audio.play(sound.0.clone());
-    }
 }
