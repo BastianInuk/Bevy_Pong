@@ -46,7 +46,7 @@ const SCORE_COLOR: Color = Color::rgb(1.0, 0.5, 0.5);
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .insert_resource(Scoreboard { score: 0 })
+        .insert_resource(Scoreboard { left: 0, right: 0 })
         .insert_resource(ClearColor(BACKGROUND_COLOR))
         .add_startup_system(setup)
         .add_event::<CollisionEvent>()
@@ -85,6 +85,10 @@ struct Controls {
 }
 
 struct CollisionSound(Handle<AudioSource>);
+
+
+#[derive(Component)]
+struct Side(WallLocation);
 
 // This bundle is a collection of the components that define a "wall" in our game
 #[derive(Bundle)]
@@ -159,7 +163,8 @@ impl WallBundle {
 
 // This resource tracks the game's score
 struct Scoreboard {
-    score: usize,
+    left: usize,
+    right: usize
 }
 
 // Add the game's entities to our world
@@ -243,7 +248,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         text: Text {
             sections: vec![
                 TextSection {
-                    value: "Score: ".to_string(),
+                    value: "Left: ".to_string(),
                     style: TextStyle {
                         font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                         font_size: SCOREBOARD_FONT_SIZE,
@@ -271,7 +276,40 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         },
         ..default()
-    });
+    }).insert(Side(WallLocation::Left));
+    commands.spawn_bundle(TextBundle {
+        text: Text {
+            sections: vec![
+                TextSection {
+                    value: "Right: ".to_string(),
+                    style: TextStyle {
+                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                        font_size: SCOREBOARD_FONT_SIZE,
+                        color: TEXT_COLOR,
+                    },
+                },
+                TextSection {
+                    value: "".to_string(),
+                    style: TextStyle {
+                        font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+                        font_size: SCOREBOARD_FONT_SIZE,
+                        color: SCORE_COLOR,
+                    },
+                },
+            ],
+            ..default()
+        },
+        style: Style {
+            position_type: PositionType::Absolute,
+            position: Rect {
+                top: SCOREBOARD_TEXT_PADDING,
+                right: SCOREBOARD_TEXT_PADDING,
+                ..default()
+            },
+            ..default()
+        },
+        ..default()
+    }).insert(Side(WallLocation::Right));
 
     // Walls
     commands.spawn_bundle(WallBundle::new(WallLocation::Left));
@@ -329,9 +367,15 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>) {
     }
 }
 
-fn update_scoreboard(scoreboard: Res<Scoreboard>, mut query: Query<&mut Text>) {
-    let mut text = query.single_mut();
-    text.sections[1].value = format!("{}", scoreboard.score);
+fn update_scoreboard(scoreboard: Res<Scoreboard>, mut query: Query<(&mut Text, &Side)>) {
+    for (mut text, side) in query.iter_mut()
+    {
+        text.sections[1].value = format!("{}", match side.0 {
+            WallLocation::Left => scoreboard.left,
+            WallLocation::Right => scoreboard.right,
+            _ => 0,
+        });
+    }
 }
 
 fn check_for_collisions(
